@@ -23,7 +23,9 @@
     },
     "scripts": {
         "build": "tsc",
-        "test": "tsc -p tsconfig.test.json && node --test dist-test/test"
+        "test": "tsc -p tsconfig.test.json && node --test dist-test/test",
+        "prepublishOnly": "npm run build",
+        "npmPublish": "npm publish --access public"
     },
     "devDependencies": {
         "@types/node": "^20.19.43",
