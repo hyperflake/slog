@@ -66,14 +66,9 @@ export class Logger {
 
         const fieldsText = this.formatFields(fields);
 
-        let line = fieldsText
+        const line = fieldsText
             ? `${timestamp} ${levelText} ${message} ${fieldsText}`
             : `${timestamp} ${levelText} ${message}`;
-
-        const stackBlocks = this.collectStackBlocks(fields);
-        if (stackBlocks.length > 0) {
-            line += `\n${stackBlocks.join("\n")}`;
-        }
 
         if (level === "error") {
             console.error(line);
@@ -88,27 +83,6 @@ export class Logger {
         console.log(line);
     }
 
-    private collectStackBlocks(fields: LogFields): string[] {
-        const blocks: string[] = [];
-
-        for (const value of Object.values(fields)) {
-            if (!(value instanceof Error) || !value.stack) {
-                continue;
-            }
-
-            const frames = value.stack
-                .split("\n")
-                .slice(1)
-                .map((frame) => `    ${frame.trim()}`);
-
-            if (frames.length > 0) {
-                blocks.push(frames.join("\n"));
-            }
-        }
-
-        return blocks;
-    }
-
     private formatFields(fields: LogFields): string {
         return Object.entries(fields)
             .map(([key, value]) => `${key}=${this.formatValue(value)}`)
@@ -117,7 +91,7 @@ export class Logger {
 
     private formatValue(value: LogValue): string {
         if (value instanceof Error) {
-            return this.quoteIfNeeded(value.message);
+            return this.quoteIfNeeded(this.formatError(value));
         }
 
         if (typeof value === "string") {
@@ -137,6 +111,23 @@ export class Logger {
         }
 
         return this.quoteIfNeeded(JSON.stringify(value));
+    }
+
+    private formatError(error: Error): string {
+        if (!error.stack) {
+            return error.message;
+        }
+
+        const frames = error.stack
+            .split("\n")
+            .slice(1)
+            .map((frame) => frame.trim());
+
+        if (frames.length === 0) {
+            return error.message;
+        }
+
+        return [error.message, ...frames].join("\n");
     }
 
     private quoteIfNeeded(value: string): string {
