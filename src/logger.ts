@@ -1,11 +1,14 @@
 type LogLevel = "debug" | "info" | "warn" | "error";
 
+type LogFormat = "logfmt" | "json";
+
 type LogValue = string | number | boolean | null | undefined | Error | object;
 
 type LogFields = Record<string, LogValue>;
 
 interface LoggerOptions {
     level?: LogLevel;
+    format?: LogFormat;
     fields?: LogFields;
 }
 
@@ -16,18 +19,35 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
     error: 40,
 };
 
+let globalDefaults: { level?: LogLevel; format?: LogFormat } = {};
+
 export class Logger {
-    private readonly level: LogLevel;
+    private readonly explicitLevel?: LogLevel;
+    private readonly explicitFormat?: LogFormat;
     private readonly fields: LogFields;
 
     constructor(options: LoggerOptions = {}) {
-        this.level = options.level ?? "info";
+        this.explicitLevel = options.level;
+        this.explicitFormat = options.format;
         this.fields = options.fields ?? {};
+    }
+
+    static setDefaults(defaults: { level?: LogLevel; format?: LogFormat }): void {
+        globalDefaults = { ...globalDefaults, ...defaults };
+    }
+
+    private get level(): LogLevel {
+        return this.explicitLevel ?? globalDefaults.level ?? "info";
+    }
+
+    private get format(): LogFormat {
+        return this.explicitFormat ?? globalDefaults.format ?? "logfmt";
     }
 
     with(fields: LogFields = {}): Logger {
         return new Logger({
-            level: this.level,
+            level: this.explicitLevel,
+            format: this.explicitFormat,
             fields: {
                 ...this.fields,
                 ...fields,
@@ -64,11 +84,10 @@ export class Logger {
             ...callFields,
         };
 
-        const fieldsText = this.formatFields(fields);
-
-        const line = fieldsText
-            ? `${timestamp} ${levelText} ${message} ${fieldsText}`
-            : `${timestamp} ${levelText} ${message}`;
+        const line =
+            this.format === "json"
+                ? this.formatJsonLine(timestamp, levelText, message, fields)
+                : this.formatLogfmtLine(timestamp, levelText, message, fields);
 
         if (level === "error") {
             console.error(line);
@@ -81,6 +100,37 @@ export class Logger {
         }
 
         console.log(line);
+    }
+
+    private formatLogfmtLine(timestamp: string, levelText: string, message: string, fields: LogFields): string {
+        const fieldsText = this.formatFields(fields);
+
+        return fieldsText ? `${timestamp} ${levelText} ${message} ${fieldsText}` : `${timestamp} ${levelText} ${message}`;
+    }
+
+    private formatJsonLine(timestamp: string, levelText: string, message: string, fields: LogFields): string {
+        const record: Record<string, unknown> = {
+            time: timestamp,
+            level: levelText,
+            msg: message,
+        };
+
+        for (const [key, value] of Object.entries(fields)) {
+            record[key] = this.toJsonValue(value);
+        }
+
+        return JSON.stringify(record);
+    }
+
+    private toJsonValue(value: LogValue): unknown {
+        if (value instanceof Error) {
+            return {
+                message: value.message,
+                ...(value.stack ? { stack: value.stack } : {}),
+            };
+        }
+
+        return value;
     }
 
     private formatFields(fields: LogFields): string {
@@ -159,4 +209,4 @@ export class Logger {
 
 export const logger = new Logger();
 
-export type { LogLevel, LogValue, LogFields, LoggerOptions };
+export type { LogLevel, LogFormat, LogValue, LogFields, LoggerOptions };

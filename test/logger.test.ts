@@ -131,52 +131,48 @@ describe("field value formatting", () => {
 });
 
 describe("error formatting", () => {
-    test("error field renders only the message inline", () => {
+    test("error field renders the message and escaped stack inline, on one line", () => {
         const logger = new Logger();
         const err = new Error("connection refused");
         logger.error("upload failed", { error: err });
-        assert.match(errorCalls[0].split("\n")[0], /error="connection refused"$/);
+        assert.equal(errorCalls[0].split("\n").length, 1);
+        assert.match(errorCalls[0], /error="connection refused\\nat /);
     });
 
-    test("error message with no whitespace is unquoted inline", () => {
+    test("error without a stack renders just the message, quoted only if needed", () => {
         const logger = new Logger();
         const err = new Error("timeout");
+        delete (err as { stack?: string }).stack;
         logger.error("upload failed", { error: err });
-        assert.match(errorCalls[0].split("\n")[0], /error=timeout$/);
+        assert.match(errorCalls[0], /error=timeout$/);
     });
 
-    test("stack trace is appended as indented lines below the main line", () => {
+    test("stack trace is escaped into the error field, keeping the whole entry on one line", () => {
         const logger = new Logger();
         const err = new Error("boom");
         logger.error("failed", { error: err });
 
-        const lines = errorCalls[0].split("\n");
-        assert.ok(lines.length > 1, "expected stack lines to be appended");
-        for (const frame of lines.slice(1)) {
-            assert.match(frame, /^ {4}at /);
-        }
+        assert.equal(errorCalls[0].split("\n").length, 1);
+        assert.match(errorCalls[0], /error="boom\\nat /);
     });
 
-    test("stack trace's leading 'Error: message' line is stripped", () => {
+    test("stack trace's leading 'Error: message' line is stripped before escaping", () => {
         const logger = new Logger();
         const err = new Error("boom");
         logger.error("failed", { error: err });
 
-        const lines = errorCalls[0].split("\n");
-        for (const frame of lines.slice(1)) {
-            assert.doesNotMatch(frame, /^ {4}Error: boom$/);
-        }
+        assert.doesNotMatch(errorCalls[0], /\\nError: boom\\n/);
     });
 
-    test("multiple errors each contribute their own stack block", () => {
+    test("multiple errors each contribute their own escaped stack", () => {
         const logger = new Logger();
         const errA = new Error("first");
         const errB = new Error("second");
         logger.error("failed", { errA, errB });
 
-        const lines = errorCalls[0].split("\n");
-        const stackLines = lines.slice(1);
-        assert.ok(stackLines.length >= 2, "expected frames from both errors");
+        assert.equal(errorCalls[0].split("\n").length, 1);
+        assert.match(errorCalls[0], /errA="first\\nat /);
+        assert.match(errorCalls[0], /errB="second\\nat /);
     });
 
     test("error without a stack only renders the inline message", () => {
@@ -186,6 +182,60 @@ describe("error formatting", () => {
         logger.error("failed", { error: err });
 
         assert.equal(errorCalls[0].split("\n").length, 1);
+    });
+});
+
+describe("json format", () => {
+    afterEach(() => {
+        Logger.setDefaults({ level: "info", format: "logfmt" });
+    });
+
+    test("emits one JSON object per line with time, level, msg, and fields flattened", () => {
+        const logger = new Logger({ format: "json" });
+        logger.info("image resized", { width: 1920, height: 1080 });
+
+        const parsed = JSON.parse(logCalls[0]);
+        assert.match(parsed.time, TIMESTAMP);
+        assert.equal(parsed.level, "INFO");
+        assert.equal(parsed.msg, "image resized");
+        assert.equal(parsed.width, 1920);
+        assert.equal(parsed.height, 1080);
+    });
+
+    test("error fields become a structured { message, stack } object", () => {
+        const logger = new Logger({ format: "json" });
+        const err = new Error("boom");
+        logger.error("failed", { error: err });
+
+        const parsed = JSON.parse(errorCalls[0]);
+        assert.equal(parsed.error.message, "boom");
+        assert.match(parsed.error.stack, /^Error: boom/);
+    });
+
+    test("Logger.setDefaults({ format: 'json' }) affects loggers with no explicit format", () => {
+        Logger.setDefaults({ format: "json" });
+        const logger = new Logger();
+        logger.info("msg");
+
+        const parsed = JSON.parse(logCalls[0]);
+        assert.equal(parsed.msg, "msg");
+    });
+
+    test("an explicit per-instance format overrides the global default", () => {
+        Logger.setDefaults({ format: "json" });
+        const logger = new Logger({ format: "logfmt" });
+        logger.info("msg");
+
+        assert.match(logCalls[0], /^\S+ \S+ INFO msg$/);
+    });
+
+    test("with() children resolve format live against the global default", () => {
+        const child = new Logger().with({ a: 1 });
+        Logger.setDefaults({ format: "json" });
+        child.info("msg");
+
+        const parsed = JSON.parse(logCalls[0]);
+        assert.equal(parsed.a, 1);
     });
 });
 

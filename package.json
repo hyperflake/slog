@@ -1,12 +1,21 @@
 {
     "name": "@hyperflake/slog",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Node.js logger mimicking Go's slog text output format",
     "type": "module",
-    "main": "dist/index.js",
+    "main": "dist-cjs/index.js",
+    "module": "dist/index.js",
     "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "require": "./dist-cjs/index.js"
+        }
+    },
     "files": [
-        "dist"
+        "dist",
+        "dist-cjs"
     ],
     "keywords": [
         "slog",
@@ -22,7 +31,7 @@
         "url": "git+https://github.com/hyperflake/slog.git"
     },
     "scripts": {
-        "build": "tsc",
+        "build": "tsc && tsc -p tsconfig.cjs.json && node -e \"require('fs').writeFileSync('dist-cjs/package.json', JSON.stringify({ type: 'commonjs' }))\"",
         "test": "tsc -p tsconfig.test.json && node --test dist-test/test",
         "prepublishOnly": "npm run build",
         "npmPublish": "npm publish --access public"
